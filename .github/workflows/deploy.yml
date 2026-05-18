@@ -24,7 +24,7 @@ jobs:
           tar --exclude='.git' \
               --exclude='venv' \
               --exclude='__pycache__' \
-              -czf python-app.tar.gz .
+              -czf /tmp/python-app.tar.gz .
 
           scp -i ~/.ssh/ec2_key \
               -o StrictHostKeyChecking=no \
