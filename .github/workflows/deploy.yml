@@ -28,7 +28,7 @@ jobs:
 
           scp -i ~/.ssh/ec2_key \
               -o StrictHostKeyChecking=no \
-              python-app.tar.gz \
+              /tmp/python-app.tar.gz \
               ${{ secrets.JUMP_USER }}@${{ secrets.JUMP_HOST }}:/tmp/python-app.tar.gz
 
           ssh -i ~/.ssh/ec2_key \
