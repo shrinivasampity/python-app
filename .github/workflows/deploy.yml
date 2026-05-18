@@ -6,35 +6,60 @@ on:
   workflow_dispatch:
 
 jobs:
-  build-and-deploy:
+  deploy:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout code
+      - name: Checkout repository
         uses: actions/checkout@v4
-
-      - name: Build Docker image
-        run: docker build -t python-app .
 
       - name: Set up SSH key
         run: |
           mkdir -p ~/.ssh
           echo "${{ secrets.EC2_SSH_KEY }}" > ~/.ssh/ec2_key
           chmod 600 ~/.ssh/ec2_key
-          ssh-keyscan -H ${{ secrets.EC2_HOST }} >> ~/.ssh/known_hosts
 
-      - name: Deploy to EC2
+      - name: Copy code to private EC2 via jump server
         run: |
-          ssh -i ~/.ssh/ec2_key ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} << 'EOF'
+          tar --exclude='.git' \
+              --exclude='venv' \
+              --exclude='__pycache__' \
+              -czf python-app.tar.gz .
+
+          scp -i ~/.ssh/ec2_key \
+              -o StrictHostKeyChecking=no \
+              python-app.tar.gz \
+              ${{ secrets.JUMP_USER }}@${{ secrets.JUMP_HOST }}:/tmp/python-app.tar.gz
+
+          ssh -i ~/.ssh/ec2_key \
+              -o StrictHostKeyChecking=no \
+              ${{ secrets.JUMP_USER }}@${{ secrets.JUMP_HOST }} << 'EOF'
             set -e
-            cd ~
-            if [ ! -d incident_platform ]; then
-              git clone https://github.com/shrinivasampity/incident_platform.git
-            fi
-            cd incident_platform
-            git pull origin main
-            docker stop incident-app || true
-            docker rm incident-app || true
-            docker build -t incident-app .
-            docker run -d --name incident-app -p 80:80 incident-app
+
+            scp -i ~/.ssh/ec2_key \
+                -o StrictHostKeyChecking=no \
+                /tmp/python-app.tar.gz \
+                ${{ secrets.APP_USER }}@${{ secrets.APP_PRIVATE_IP }}:/tmp/python-app.tar.gz
+
+            ssh -i ~/.ssh/ec2_key \
+                -o StrictHostKeyChecking=no \
+                ${{ secrets.APP_USER }}@${{ secrets.APP_PRIVATE_IP }} << 'INNER_EOF'
+              set -e
+
+              mkdir -p ~/python-app
+              tar -xzf /tmp/python-app.tar.gz -C ~/python-app
+              cd ~/python-app
+
+              docker stop python-app || true
+              docker rm python-app || true
+
+              docker build -t python-app .
+              docker run -d \
+                --name python-app \
+                --restart unless-stopped \
+                -p 80:80 \
+                python-app
+
+              docker ps
+            INNER_EOF
           EOF
