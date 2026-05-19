@@ -1,3 +1,4 @@
+import socket
 from fastapi import FastAPI
 from pydantic import BaseModel
 
@@ -10,7 +11,7 @@ class Incident(BaseModel):
 incidents = []
 
 @app.get("/")
-def health():
+def health():i
     return {"status": "ok"}
     "server": socket.gethostname()
 
