@@ -12,6 +12,8 @@ incidents = []
 @app.get("/")
 def health():
     return {"status": "ok"}
+    "server": socket.gethostname()
+
 
 @app.post("/incident")
 def create_incident(incident: Incident):
