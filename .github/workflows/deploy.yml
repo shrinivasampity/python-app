@@ -1,44 +1,89 @@
-- name: Deploy on both private EC2 app servers
-  run: |
-    ssh -i ~/.ssh/ec2_key \
-        -o StrictHostKeyChecking=no \
-        ${{ secrets.JUMP_USER }}@${{ secrets.JUMP_HOST }} << 'EOF'
+name: Docker CI/CD
 
-    chmod 600 /tmp/ec2_key
+on:
+  push:
+    branches: [ "main" ]
+  workflow_dispatch:
 
-    for APP_IP in "${{ secrets.APP_SERVER_1_PRIVATE_IP }}" "${{ secrets.APP_SERVER_2_PRIVATE_IP }}"
-    do
-      echo "Deploying python-app to $APP_IP"
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
 
-      scp -i /tmp/ec2_key \
-          -o StrictHostKeyChecking=no \
-          /tmp/python-app.tar.gz \
-          ${{ secrets.APP_USER }}@$APP_IP:/tmp/python-app.tar.gz
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
-      ssh -i /tmp/ec2_key \
-          -o StrictHostKeyChecking=no \
-          ${{ secrets.APP_USER }}@$APP_IP << 'INNER_EOF'
-    set -e
+      - name: Set up SSH key
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.EC2_SSH_KEY }}" > ~/.ssh/ec2_key
+          chmod 600 ~/.ssh/ec2_key
 
-    mkdir -p ~/python-app
-    rm -rf ~/python-app/*
-    tar -xzf /tmp/python-app.tar.gz -C ~/python-app
+      - name: Package application
+        run: |
+          tar --exclude='.git' \
+              --exclude='venv' \
+              --exclude='__pycache__' \
+              --exclude='*.pyc' \
+              --exclude='app.log' \
+              -czf /tmp/python-app.tar.gz .
 
-    cd ~/python-app
+      - name: Copy package and key to jump server
+        run: |
+          scp -i ~/.ssh/ec2_key \
+              -o StrictHostKeyChecking=no \
+              /tmp/python-app.tar.gz \
+              ${{ secrets.JUMP_USER }}@${{ secrets.JUMP_HOST }}:/tmp/python-app.tar.gz
 
-    docker stop python-app || true
-    docker rm python-app || true
+          scp -i ~/.ssh/ec2_key \
+              -o StrictHostKeyChecking=no \
+              ~/.ssh/ec2_key \
+              ${{ secrets.JUMP_USER }}@${{ secrets.JUMP_HOST }}:/tmp/ec2_key
 
-    docker build -t python-app .
+      - name: Deploy to both private EC2 app servers
+        run: |
+          ssh -i ~/.ssh/ec2_key \
+              -o StrictHostKeyChecking=no \
+              ${{ secrets.JUMP_USER }}@${{ secrets.JUMP_HOST }} << 'EOF'
+          set -e
 
-    docker run -d \
-      --name python-app \
-      --restart unless-stopped \
-      -p 80:80 \
-      python-app
+          chmod 600 /tmp/ec2_key
 
-    docker ps
-    INNER_EOF
+          for APP_IP in "${{ secrets.APP_SERVER_1_PRIVATE_IP }}" "${{ secrets.APP_SERVER_2_PRIVATE_IP }}"
+          do
+            echo "Deploying python-app to $APP_IP"
 
-    done
-    EOF
+            scp -i /tmp/ec2_key \
+                -o StrictHostKeyChecking=no \
+                /tmp/python-app.tar.gz \
+                ${{ secrets.APP_USER }}@$APP_IP:/tmp/python-app.tar.gz
+
+            ssh -i /tmp/ec2_key \
+                -o StrictHostKeyChecking=no \
+                ${{ secrets.APP_USER }}@$APP_IP << 'INNER_EOF'
+          set -e
+
+          mkdir -p ~/python-app
+          rm -rf ~/python-app/*
+          tar -xzf /tmp/python-app.tar.gz -C ~/python-app
+
+          cd ~/python-app
+
+          docker stop python-app || true
+          docker rm python-app || true
+
+          docker build -t python-app .
+
+          docker run -d \
+            --name python-app \
+            --restart unless-stopped \
+            -p 80:80 \
+            python-app
+
+          docker ps
+          INNER_EOF
+
+          done
+
+          rm -f /tmp/ec2_key /tmp/python-app.tar.gz
+          EOF
