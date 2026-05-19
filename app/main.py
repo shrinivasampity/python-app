@@ -11,10 +11,11 @@ class Incident(BaseModel):
 incidents = []
 
 @app.get("/")
-def health():i
-    return {"status": "ok"}
-    "server": socket.gethostname()
-
+def health():
+    return {
+	"status": "ok",
+    	"server": socket.gethostname()
+	}
 
 @app.post("/incident")
 def create_incident(incident: Incident):
