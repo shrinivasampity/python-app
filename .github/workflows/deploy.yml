@@ -76,6 +76,6 @@ jobs:
 
               docker ps
 
-            INNER_EOF
+          INNER_EOF
 
           EOF
